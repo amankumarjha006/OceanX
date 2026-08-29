@@ -1,0 +1,7 @@
+fastapi>=0.104
+uvicorn[standard]>=0.24
+xarray>=2023.10
+netCDF4>=1.6
+numpy>=1.24
+pandas>=2.0
+python-multipart>=0.0.6

@@ -1,0 +1,21 @@
+# Python virtual environment & cache
+venv/
+**/venv/
+__pycache__/
+/**/__pycache__/
+*.pyc
+*.pyo
+
+# Node modules & build artifacts
+node_modules/
+**/node_modules/
+dist/
+**/dist/
+dist-ssr/
+
+# Logs & temp
+*.log
+logs/
+.DS_Store
+.idea/
+.vscode/
