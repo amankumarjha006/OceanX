@@ -117,6 +117,36 @@ async def get_slice(
         "values": selected.values.tolist(),
     }
 
+@app.get("/volume")
+async def get_volume(
+    variable: str = Query(..., description="Variable name (e.g., temperature)"),
+    time: int = Query(..., description="Time index (0-23)"),
+):
+    if variable not in ds.data_vars:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Variable '{variable}' not found. Available: {list(ds.data_vars.keys())}",
+        )
+
+    var_data = ds[variable]
+    time_min, time_max = 0, len(ds["time"]) - 1
+
+    if time < time_min or time > time_max:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Time index {time} out of range [{time_min}, {time_max}]",
+        )
+
+    selected = var_data.isel(time=time)
+
+    return {
+        "variable": variable,
+        "time": int(time),
+        "depth": selected.depth.values.tolist(),
+        "latitude": selected.latitude.values.tolist(),
+        "longitude": selected.longitude.values.tolist(),
+        "values": selected.values.tolist(),
+    }
 
 if __name__ == "__main__":
     import uvicorn

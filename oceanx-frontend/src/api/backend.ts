@@ -1,5 +1,5 @@
-import type { Variable, Dimensions, SliceResponse } from '../types/api';
-import { MOCK_DIMENSIONS, MOCK_VARIABLES, generateMockSlice } from './mockData';
+import type { Variable, Dimensions, SliceResponse, VolumeResponse } from '../types/api';
+import { MOCK_DIMENSIONS, MOCK_VARIABLES, generateMockSlice, generateMockVolume } from './mockData';
 
 const BASE_URL = '/';
 let forceMockMode = false;
@@ -58,6 +58,21 @@ export async function fetchSlice(variable: string, depth: number, time: number):
     return await fetchJson<SliceResponse>(`slice?variable=${encodeURIComponent(variable)}&depth=${depth}&time=${time}`);
   } catch (err) {
     if (forceMockMode) return generateMockSlice(variable, depth, time);
+    throw err;
+  }
+}
+
+export async function fetchVolume(variable: string, time: number, signal?: AbortSignal): Promise<VolumeResponse> {
+  if (forceMockMode) return generateMockVolume(variable, time);
+  try {
+    const response = await fetch(`${BASE_URL}volume?variable=${encodeURIComponent(variable)}&time=${time}`, { signal });
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ detail: 'Unknown error' }));
+      throw new Error(error.detail || `HTTP ${response.status}`);
+    }
+    return response.json();
+  } catch (err) {
+    if (forceMockMode) return generateMockVolume(variable, time);
     throw err;
   }
 }

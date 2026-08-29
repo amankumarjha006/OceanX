@@ -1,4 +1,4 @@
-import type { Dimensions, Variable, SliceResponse } from '../types/api';
+import type { Dimensions, Variable, SliceResponse, VolumeResponse } from '../types/api';
 
 export const MOCK_VARIABLES: Variable[] = [
   {
@@ -113,5 +113,24 @@ export function generateMockSlice(variable: string, depth: number, time: number)
     latitude: LAT_VALUES,
     longitude: LON_VALUES,
     values,
+  };
+}
+
+export function generateMockVolume(variable: string, time: number): VolumeResponse {
+  const volumeValues: number[][][] = [];
+  
+  for (let d = 0; d < DEPTH_VALUES.length; d++) {
+    const depth = DEPTH_VALUES[d];
+    const slice = generateMockSlice(variable, depth, time);
+    volumeValues.push(slice.values);
+  }
+
+  return {
+    variable,
+    time,
+    depth: DEPTH_VALUES,
+    latitude: LAT_VALUES,
+    longitude: LON_VALUES,
+    values: volumeValues,
   };
 }

@@ -9,6 +9,7 @@ export default defineConfig({
       '/dimensions': 'http://localhost:8000',
       '/variables': 'http://localhost:8000',
       '/slice': 'http://localhost:8000',
+      '/volume': 'http://localhost:8000',
     },
   },
 })

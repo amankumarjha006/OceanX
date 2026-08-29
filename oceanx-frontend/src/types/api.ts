@@ -41,3 +41,12 @@ export interface SliceResponse {
   longitude: number[];
   values: number[][];
 }
+
+export interface VolumeResponse {
+  variable: string;
+  time: number;
+  depth: number[];
+  latitude: number[];
+  longitude: number[];
+  values: number[][][]; // [depthIndex][latIndex][lonIndex]
+}

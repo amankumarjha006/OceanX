@@ -364,13 +364,15 @@
   display: flex;
   justify-content: center;
   align-items: center;
+  width: 100%;
 }
 
 .heatmap-layout {
   display: flex;
   gap: 28px;
   align-items: flex-start;
-  max-width: 100%;
+  width: 100%;
+  min-height: 600px;
   overflow-x: auto;
 }
 

@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Controls, ThreeDVisualization, Colorbar, StatusBar } from './components';
 import type { ColormapType } from './utils/colormap';
 import { fetchDimensions, fetchVariables, checkBackendHealth, setUseMockMode } from './api/backend';
-import { useSlice } from './hooks/useSlice';
+import { useVolume } from './hooks/useVolume';
 import type { Dimensions, Variable } from './types/api';
 import './App.css';
 
@@ -65,7 +65,7 @@ function App() {
   }, [isPlaying]);
 
   const depthValue = dimensions?.depth.values[depthIndex] ?? 0;
-  const { data, loading, error } = useSlice(selectedVariable, depthValue, timeIndex);
+  const { data, loading, error } = useVolume(selectedVariable, timeIndex);
   const variableMeta = variables.find((v) => v.name === selectedVariable);
 
   const toggleDemoMode = () => {
@@ -162,13 +162,14 @@ function App() {
                 {data ? (
                   <div className="heatmap-layout">
                     <ThreeDVisualization
-                      values={data.values}
+                      volumeValues={data.values}
                       min={data.min}
                       max={data.max}
                       colormap={colormap}
                       latRange={{ min: dimensions.latitude.min, max: dimensions.latitude.max }}
                       lonRange={{ min: dimensions.longitude.min, max: dimensions.longitude.max }}
                       depthValue={depthValue}
+                      depthValues={dimensions.depth.values}
                     />
                     <Colorbar
                       min={data.min}

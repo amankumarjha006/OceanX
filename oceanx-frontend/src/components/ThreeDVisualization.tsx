@@ -1,6 +1,6 @@
 import { useMemo, useRef, useEffect } from 'react';
 import { Canvas } from '@react-three/fiber';
-import { OrbitControls } from '@react-three/drei';
+import { OrbitControls, Text, Line } from '@react-three/drei';
 import * as THREE from 'three';
 import { valueToThreeColor, type ColormapType } from '../utils/colormap';
 
@@ -12,13 +12,14 @@ const BLOCK_HEIGHT = 10; // Volumetric ocean thickness
 const HEIGHT_SCALE = 2.5;
 
 interface ThreeDVisualizationProps {
-  values: number[][];
+  volumeValues: number[][][]; // [depth][lat][lon]
   min: number;
   max: number;
   colormap: ColormapType;
   latRange: { min: number; max: number };
   lonRange: { min: number; max: number };
   depthValue: number;
+  depthValues: number[];
 }
 
 // 1. TOP SURFACE HEIGHTMAP
@@ -64,8 +65,10 @@ function TopSurface({ values, min, max, colormap }: { values: number[][]; min: n
       const val = values[r][c];
       const normVal = max === min ? 0.5 : (val - min) / (max - min);
       
+      const isEdge = r === 0 || r === rows - 1 || c === 0 || c === cols - 1;
+      
       // Y offset relative to top of block (BLOCK_HEIGHT / 2 = 5)
-      const h = BLOCK_HEIGHT / 2 + normVal * HEIGHT_SCALE;
+      const h = BLOCK_HEIGHT / 2 + (isEdge ? 0 : normVal * HEIGHT_SCALE);
       posAttr.setY(i, h);
 
       const color = valueToThreeColor(val, min, max, colormap);
@@ -80,12 +83,13 @@ function TopSurface({ values, min, max, colormap }: { values: number[][]; min: n
   return <mesh geometry={geometry} material={material} />;
 }
 
-// 2. SIDE WALLS WITH DEPTH GRADIENT
+// 2. SIDE WALLS WITH EXACT VERTICAL DEPTH MAPPING
 function SideWall({
   position,
   rotation,
   width,
-  edgeValues,
+  curtainData,
+  depthValues,
   min,
   max,
   colormap,
@@ -93,21 +97,38 @@ function SideWall({
   position: [number, number, number];
   rotation: [number, number, number];
   width: number;
-  edgeValues: number[];
+  curtainData: number[][]; // [depth][segment]
+  depthValues: number[];
   min: number;
   max: number;
   colormap: ColormapType;
 }) {
   const geoRef = useRef<THREE.PlaneGeometry | null>(null);
-  const vSegments = 10;
-  const hSegments = edgeValues.length - 1;
 
   const geometry = useMemo(() => {
+    const hSegments = (curtainData[0]?.length || 1) - 1;
+    const vSegments = depthValues.length - 1;
+    const maxDepth = depthValues[depthValues.length - 1] || 1;
+    
     const geo = new THREE.PlaneGeometry(width, BLOCK_HEIGHT, hSegments, vSegments);
-    const colorAttr = new THREE.Float32BufferAttribute(new Float32Array(geo.attributes.position.count * 3), 3);
+    
+    // adjust Y positions based on actual depth proportionality
+    const posAttr = geo.attributes.position as THREE.BufferAttribute;
+    const cols = hSegments + 1;
+    
+    for (let i = 0; i < posAttr.count; i++) {
+      const row = Math.floor(i / cols); // 0 to vSegments
+      const depth = depthValues[row];
+      const y = (BLOCK_HEIGHT / 2) - (depth / maxDepth) * BLOCK_HEIGHT;
+      posAttr.setY(i, y);
+    }
+    
+    geo.computeVertexNormals();
+
+    const colorAttr = new THREE.Float32BufferAttribute(new Float32Array(posAttr.count * 3), 3);
     geo.setAttribute('color', colorAttr);
     return geo;
-  }, [width, hSegments]);
+  }, [width, curtainData, depthValues]);
 
   const material = useMemo(() => {
     return new THREE.MeshStandardMaterial({
@@ -125,29 +146,20 @@ function SideWall({
     if (!geo) return;
 
     const colorAttr = geo.getAttribute('color') as THREE.BufferAttribute;
-    const cols = edgeValues.length;
+    const cols = curtainData[0]?.length || 1;
     const vertexCount = colorAttr.count;
 
-    const deepColor = valueToThreeColor(min, min, max, colormap);
-
     for (let i = 0; i < vertexCount; i++) {
-      const row = Math.floor(i / cols); // 0 (top) to vSegments (bottom)
+      const row = Math.floor(i / cols); 
       const col = i % cols;
-      const topVal = edgeValues[col] ?? min;
+      const val = curtainData[row]?.[col] ?? min;
 
-      const topColor = valueToThreeColor(topVal, min, max, colormap);
-      const depthFactor = row / vSegments; // 0 = surface, 1 = deep bottom
-
-      // Interpolate surface color down to deep ocean color
-      const r = topColor.r * (1 - depthFactor * 0.7) + deepColor.r * (depthFactor * 0.7);
-      const g = topColor.g * (1 - depthFactor * 0.7) + deepColor.g * (depthFactor * 0.7);
-      const b = topColor.b * (1 - depthFactor * 0.7) + deepColor.b * (depthFactor * 0.7);
-
-      colorAttr.setXYZ(i, r, g, b);
+      const color = valueToThreeColor(val, min, max, colormap);
+      colorAttr.setXYZ(i, color.r, color.g, color.b);
     }
 
     colorAttr.needsUpdate = true;
-  }, [edgeValues, min, max, colormap]);
+  }, [curtainData, min, max, colormap]);
 
   return <mesh position={position} rotation={rotation} geometry={geometry} material={material} />;
 }
@@ -176,23 +188,86 @@ function BottomSurface() {
   );
 }
 
+// 5. DEPTH HIGHLIGHT BAND & AXIS
+function DepthHighlight({ depthValue, maxDepth, depthValues }: { depthValue: number; maxDepth: number; depthValues: number[] }) {
+  const y = (BLOCK_HEIGHT / 2) - (depthValue / maxDepth) * BLOCK_HEIGHT;
+  
+  const points = useMemo(() => {
+    const w = BLOCK_WIDTH / 2;
+    const d = BLOCK_DEPTH / 2;
+    const ext = 0.05; // Extend slightly outside box
+    return [
+      [-w - ext, 0, -d - ext],
+      [w + ext, 0, -d - ext],
+      [w + ext, 0, d + ext],
+      [-w - ext, 0, d + ext],
+      [-w - ext, 0, -d - ext],
+    ] as [number, number, number][];
+  }, []);
+
+  // Select evenly spaced labels
+  const labels = useMemo(() => {
+    const numLabels = 5;
+    const step = Math.max(1, Math.floor(depthValues.length / numLabels));
+    const selected = [];
+    for (let i = 0; i < depthValues.length; i += step) {
+      selected.push(depthValues[i]);
+    }
+    if (!selected.includes(depthValues[depthValues.length - 1])) {
+      selected.push(depthValues[depthValues.length - 1]);
+    }
+    return selected;
+  }, [depthValues]);
+
+  return (
+    <group>
+      {/* Highlight Line */}
+      <Line points={points} position={[0, y, 0]} color="#ffffff" lineWidth={3} />
+      
+      {/* Axis Labels on East Edge */}
+      <group position={[BLOCK_WIDTH / 2 + 1, 0, BLOCK_DEPTH / 2 + 1]}>
+        {labels.map(depth => {
+          const ly = (BLOCK_HEIGHT / 2) - (depth / maxDepth) * BLOCK_HEIGHT;
+          return (
+            <Text
+              key={depth}
+              position={[0, ly, 0]}
+              color="white"
+              fontSize={1.4}
+              anchorX="left"
+              anchorY="middle"
+            >
+              {`${depth}m`}
+            </Text>
+          );
+        })}
+      </group>
+    </group>
+  );
+}
+
 export function ThreeDVisualization({
-  values,
+  volumeValues,
   min,
   max,
   colormap,
   latRange: _latRange,
   lonRange: _lonRange,
-  depthValue: _depthValue,
+  depthValue,
+  depthValues,
 }: ThreeDVisualizationProps) {
-  const numRows = values.length;
-  const numCols = values[0]?.length || 0;
+  const selectedDepthIndex = depthValues.indexOf(depthValue);
+  const topFaceValues = volumeValues[selectedDepthIndex >= 0 ? selectedDepthIndex : 0];
 
-  // Extract edge values for the 4 side walls
-  const northEdges = useMemo(() => (numRows > 0 ? values[0] : []), [values, numRows]);
-  const southEdges = useMemo(() => (numRows > 0 ? values[numRows - 1] : []), [values, numRows]);
-  const westEdges = useMemo(() => values.map((r) => r[0] || 0), [values]);
-  const eastEdges = useMemo(() => values.map((r) => r[numCols - 1] || 0), [values, numCols]);
+  const numRows = topFaceValues?.length || 0;
+  const numCols = topFaceValues?.[0]?.length || 0;
+  const maxDepth = depthValues[depthValues.length - 1] || 1;
+
+  // Extract curtain values for the 4 side walls (all depths)
+  const northCurtain = useMemo(() => volumeValues.map(slice => slice[0] || []), [volumeValues]);
+  const southCurtain = useMemo(() => volumeValues.map(slice => slice[numRows - 1] || []), [volumeValues, numRows]);
+  const westCurtain = useMemo(() => volumeValues.map(slice => slice.map(r => r[0] || 0)), [volumeValues]);
+  const eastCurtain = useMemo(() => volumeValues.map(slice => slice.map(r => r[numCols - 1] || 0)), [volumeValues, numCols]);
 
   return (
     <div className="three-d-container" style={{ width: '100%', height: '620px', position: 'relative' }}>
@@ -209,7 +284,7 @@ export function ThreeDVisualization({
 
         <group position={[0, 0, 0]}>
           {/* Top Surface Slice */}
-          <TopSurface values={values} min={min} max={max} colormap={colormap} />
+          <TopSurface values={topFaceValues} min={min} max={max} colormap={colormap} />
 
           {/* 4 Side Walls */}
           {/* North Wall (Back, Z = -20) */}
@@ -217,7 +292,8 @@ export function ThreeDVisualization({
             position={[0, 0, -BLOCK_DEPTH / 2]}
             rotation={[0, 0, 0]}
             width={BLOCK_WIDTH}
-            edgeValues={northEdges}
+            curtainData={northCurtain}
+            depthValues={depthValues}
             min={min}
             max={max}
             colormap={colormap}
@@ -227,7 +303,8 @@ export function ThreeDVisualization({
             position={[0, 0, BLOCK_DEPTH / 2]}
             rotation={[0, Math.PI, 0]}
             width={BLOCK_WIDTH}
-            edgeValues={southEdges}
+            curtainData={southCurtain}
+            depthValues={depthValues}
             min={min}
             max={max}
             colormap={colormap}
@@ -237,7 +314,8 @@ export function ThreeDVisualization({
             position={[-BLOCK_WIDTH / 2, 0, 0]}
             rotation={[0, Math.PI / 2, 0]}
             width={BLOCK_DEPTH}
-            edgeValues={westEdges}
+            curtainData={westCurtain}
+            depthValues={depthValues}
             min={min}
             max={max}
             colormap={colormap}
@@ -247,7 +325,8 @@ export function ThreeDVisualization({
             position={[BLOCK_WIDTH / 2, 0, 0]}
             rotation={[0, -Math.PI / 2, 0]}
             width={BLOCK_DEPTH}
-            edgeValues={eastEdges}
+            curtainData={eastCurtain}
+            depthValues={depthValues}
             min={min}
             max={max}
             colormap={colormap}
@@ -258,6 +337,9 @@ export function ThreeDVisualization({
 
           {/* Wireframe Outline Box */}
           <BlockOutline />
+
+          {/* Dynamic Depth Highlight Band & Axis */}
+          <DepthHighlight depthValue={depthValue} maxDepth={maxDepth} depthValues={depthValues} />
         </group>
 
         <OrbitControls
