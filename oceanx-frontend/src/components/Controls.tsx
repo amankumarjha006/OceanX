@@ -1,5 +1,5 @@
 import type { Variable } from '../types/api';
-import type { ColormapType } from './HeatmapCanvas';
+import type { ColormapType } from '../utils/colormap';
 
 interface ControlsProps {
   variables: Variable[];

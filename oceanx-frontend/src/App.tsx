@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Controls, HeatmapCanvas, Colorbar, StatusBar } from './components';
-import type { ColormapType } from './components/HeatmapCanvas';
+import { Controls, ThreeDVisualization, Colorbar, StatusBar } from './components';
+import type { ColormapType } from './utils/colormap';
 import { fetchDimensions, fetchVariables, checkBackendHealth, setUseMockMode } from './api/backend';
 import { useSlice } from './hooks/useSlice';
 import type { Dimensions, Variable } from './types/api';
@@ -27,7 +27,6 @@ function App() {
     setBackendConnected(isLive);
 
     if (!isLive && !isDemoMode) {
-      // Automatically fallback to demo mode so user never sees a blank page
       setUseMockMode(true);
       setIsDemoMode(true);
     } else {
@@ -53,7 +52,6 @@ function App() {
     loadInitialData();
   }, [loadInitialData]);
 
-  // Handle animation timer for playing through 24-hour time steps
   useEffect(() => {
     let timer: number | undefined;
     if (isPlaying) {
@@ -154,7 +152,7 @@ function App() {
 
             <div className="visualization-card">
               <div className="card-header">
-                <h3>2D Horizontal Depth Slice Visualization</h3>
+                <h3>3D Horizontal Depth Slice Visualization</h3>
                 <span className="info-chip">
                   Region: {dimensions.latitude.min}°N-{dimensions.latitude.max}°N | {dimensions.longitude.min}°E-{dimensions.longitude.max}°E
                 </span>
@@ -163,14 +161,14 @@ function App() {
               <div className="visualization-body">
                 {data ? (
                   <div className="heatmap-layout">
-                    <HeatmapCanvas
+                    <ThreeDVisualization
                       values={data.values}
                       min={data.min}
                       max={data.max}
-                      units={variableMeta?.units || ''}
+                      colormap={colormap}
                       latRange={{ min: dimensions.latitude.min, max: dimensions.latitude.max }}
                       lonRange={{ min: dimensions.longitude.min, max: dimensions.longitude.max }}
-                      colormap={colormap}
+                      depthValue={depthValue}
                     />
                     <Colorbar
                       min={data.min}
